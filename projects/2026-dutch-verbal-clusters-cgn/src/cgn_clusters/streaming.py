@@ -10,12 +10,14 @@ from typing import Iterable
 from .extract import (
     AUXILIARY_LEMMAS,
     MODAL_LEMMAS,
+    SEMI_AUXILIARY_LEMMAS,
     ClusterExtractionConfig,
     classify_head_lemma,
     head_index_from_forms_and_ranks,
     infer_verb_form,
     is_verb_like,
     lower,
+    utterance_position_features,
 )
 from .schema import LANGUAGE_BY_VARIETY, normalize_language, normalize_variety
 
@@ -33,6 +35,20 @@ CLUSTER_COLUMNS = [
     "genre",
     "register",
     "cluster_length",
+    "utterance_token_count",
+    "utterance_word_count",
+    "complementizer_index",
+    "complementizer_token",
+    "complementizer_lemma",
+    "pre_cluster_nonverbal_count",
+    "pre_cluster_nonverbal_count_bin",
+    "sentence_length_type",
+    "utterance_word_count_bin",
+    "post_cluster_token_count",
+    "post_cluster_word_count",
+    "post_cluster_word_count_bin",
+    "cluster_final",
+    "cluster_position",
     "surface_tokens",
     "surface_lemmas",
     "verb_tokens",
@@ -48,6 +64,7 @@ CLUSTER_COLUMNS = [
     "has_te",
     "has_modal",
     "has_auxiliary",
+    "has_semi_auxiliary",
 ]
 
 
@@ -132,7 +149,7 @@ def extract_utterance_clusters(
     def flush() -> None:
         nonlocal current_indices
         if len(current_indices) >= config.min_verbs:
-            records.append(make_cluster_record(utterance_id, rows, current_indices))
+            records.append(make_cluster_record(utterance_id, rows, current_indices, config))
         current_indices = []
 
     for row_index, row in enumerate(rows):
@@ -151,6 +168,7 @@ def make_cluster_record(
     utterance_id: str,
     rows: list[dict[str, object]],
     verb_indices: list[int],
+    config: ClusterExtractionConfig,
 ) -> dict[str, object]:
     verb_rows = [rows[index] for index in verb_indices]
     start = min(int(row["token_index"]) for row in verb_rows)
@@ -168,6 +186,12 @@ def make_cluster_record(
         for row in verb_rows
     ]
     head_info = head_info_from_rows(verb_rows, forms)
+    position_info = utterance_position_features(
+        rows,
+        start,
+        end,
+        config.sentence_length_short_max,
+    )
 
     return {
         "cluster_id": f"{utterance_id}:{start}-{end}",
@@ -184,6 +208,7 @@ def make_cluster_record(
         "genre": most_common(row.get("genre", "") for row in verb_rows),
         "register": most_common(row.get("register", "") for row in verb_rows),
         "cluster_length": len(verb_rows),
+        **position_info,
         "surface_tokens": " ".join(span_tokens),
         "surface_lemmas": " ".join(span_lemmas),
         "verb_tokens": " ".join(verb_tokens),
@@ -195,6 +220,9 @@ def make_cluster_record(
         "has_te": any(lower(row.get("token", "")) == "te" for row in span_rows),
         "has_modal": any(lemma in MODAL_LEMMAS for lemma in verb_lemmas),
         "has_auxiliary": any(lemma in AUXILIARY_LEMMAS for lemma in verb_lemmas),
+        "has_semi_auxiliary": any(
+            lemma in SEMI_AUXILIARY_LEMMAS for lemma in verb_lemmas
+        ),
     }
 
 

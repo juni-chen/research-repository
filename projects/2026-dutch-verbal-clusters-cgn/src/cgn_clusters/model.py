@@ -12,9 +12,12 @@ import pandas as pd
 
 DEFAULT_FEATURES = [
     "cluster_length",
+    "sentence_length_type",
+    "cluster_position",
     "has_te",
     "has_modal",
     "has_auxiliary",
+    "has_semi_auxiliary",
     "component",
     "genre",
     "register",

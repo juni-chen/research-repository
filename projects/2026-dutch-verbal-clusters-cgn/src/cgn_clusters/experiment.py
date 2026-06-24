@@ -10,6 +10,7 @@ import pandas as pd
 from .evaluate import (
     head_type_word_order_summary,
     metrics_dict,
+    target_experiment_clusters,
     word_order_summary,
     write_json,
 )
@@ -49,18 +50,25 @@ def run_language_experiment(
     target_dir.mkdir(parents=True, exist_ok=True)
 
     language_clusters = clusters[clusters["language"] == language].copy()
-    write_csv(language_clusters, target_dir / "clusters.csv")
+    known = target_experiment_clusters(language_clusters)
+    write_csv(known, target_dir / "clusters.csv")
     write_csv(word_order_summary(language_clusters), target_dir / "word_order_summary.csv")
     write_csv(
         head_type_word_order_summary(language_clusters),
         target_dir / "head_type_word_order_summary.csv",
     )
 
-    known = language_clusters[language_clusters["word_order"] != "unknown"].copy()
     summary: dict[str, object] = {
         "language": language,
-        "n_clusters": int(len(language_clusters)),
+        "n_extracted_clusters": int(len(language_clusters)),
+        "n_clusters": int(len(known)),
         "n_known_clusters": int(len(known)),
+        "n_excluded_without_complementizer": int(
+            (
+                (language_clusters["word_order"] != "unknown")
+                & ~language_clusters.index.isin(known.index)
+            ).sum()
+        ),
         "word_orders": sorted(known["word_order"].unique().tolist()),
         "features": list(config.feature_columns),
     }
@@ -132,8 +140,13 @@ def run_separate_language_experiments(
         records.append(
             {
                 "language": language,
+                "n_extracted_clusters": metrics.get("n_extracted_clusters", 0),
                 "n_clusters": metrics.get("n_clusters", 0),
                 "n_known_clusters": metrics.get("n_known_clusters", 0),
+                "n_excluded_without_complementizer": metrics.get(
+                    "n_excluded_without_complementizer",
+                    0,
+                ),
                 "word_orders": ";".join(metrics.get("word_orders", [])),
                 "accuracy": metrics.get("accuracy", pd.NA),
                 "log_loss": metrics.get("log_loss", pd.NA),
