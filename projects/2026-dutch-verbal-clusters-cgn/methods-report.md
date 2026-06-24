@@ -145,9 +145,14 @@ verb_tokens
 verb_lemmas
 verb_forms
 cluster_length
+complementizer_token
+pre_cluster_nonverbal_count
+sentence_length_type
+cluster_position
 has_te
 has_modal
 has_auxiliary
+has_semi_auxiliary
 ```
 
 The full extraction produced:
@@ -157,6 +162,79 @@ The full extraction produced:
 | Dutch | 83,583 |
 | Flemish | 57,573 |
 | Total | 141,156 |
+
+## 4.1. Complementizer-to-Cluster Length and Cluster Position
+
+For this experiment, the sentence-length feature is not total utterance length.
+It measures the amount of non-verbal material inside a subordinate clause
+before the verbal cluster. A subordinate clause is identified by a preceding
+subordinating complementizer such as `dat`, `omdat`, `als`, or `of`.
+
+For a cluster \(C\) beginning at token position \(a\), define the relevant
+complementizer as the nearest preceding subordinating complementizer:
+
+\[
+c(C) =
+\max \{i : i < a,\ t_{u,i} \text{ is a subordinating complementizer}\}
+\]
+
+If no such complementizer is found, the cluster receives:
+
+\[
+\text{sentence\_length\_type}(C)=\text{no\_complementizer}
+\]
+
+If \(c(C)\) exists, the project counts the number of non-punctuation
+non-verbal words between the complementizer and the start of the verbal
+cluster:
+
+\[
+B(C) =
+\sum_{i=c(C)+1}^{a-1}
+\mathbf{1}[t_{u,i} \text{ is not punctuation and not verbal}]
+\]
+
+The binary subordinate-length feature is:
+
+\[
+\text{sentence\_length\_type}(C) =
+\begin{cases}
+\text{short} & \text{if } c(C) \text{ exists and } B(C) \leq 4 \\
+\text{long} & \text{if } c(C) \text{ exists and } B(C) > 4 \\
+\text{no\_complementizer} & \text{if } c(C) \text{ does not exist}
+\end{cases}
+\]
+
+The threshold of 4 non-verbal words reflects the working assumption that an
+essentially short subordinate clause can contain a subject NP and an object NP,
+with each NP approximated as a determiner plus noun:
+
+\[
+2 \times (\text{determiner}+\text{noun}) = 4
+\]
+
+The position of the verbal cluster is also encoded. For a cluster \(C\) ending
+at token position \(b\), define the number of following non-punctuation tokens:
+
+\[
+R(C) =
+\sum_{i=b+1}^{n_u}
+\mathbf{1}[t_{u,i} \text{ is not punctuation}]
+\]
+
+Then:
+
+\[
+\text{cluster\_position}(C) =
+\begin{cases}
+\text{final} & \text{if } R(C)=0 \\
+\text{nonfinal} & \text{if } R(C)>0
+\end{cases}
+\]
+
+In linguistic terms, `nonfinal` means that some material follows the verbal
+cluster, which can be used as a first operational proxy for post-cluster
+material or extraposition-like configurations.
 
 ## 5. Verb Form Identification
 
@@ -204,16 +282,45 @@ Only clusters with:
 y(C) \in \{1\text{-}2, 2\text{-}1\}
 \]
 
-are used for the MaxEnt analysis.
+and a detected preceding subordinating complementizer are used for the MaxEnt
+analysis. Known-order adjacent verb sequences without a detected complementizer
+are retained only in `all_clusters.csv` as diagnostic extraction output,
+because they are often main-clause finite verb + complement sequences rather
+than subordinate verbal clusters.
 
-Known-order clusters:
+Target subordinate-clause clusters:
 
-| Language | Known 1-2/2-1 Clusters |
-| --- | ---: |
-| Dutch | 49,149 |
-| Flemish | 33,722 |
+| Language | Known Adjacent Sequences | Target Subordinate Clusters | Excluded Without Complementizer |
+| --- | ---: | ---: | ---: |
+| Dutch | 49,149 | 25,017 | 24,132 |
+| Flemish | 33,722 | 17,773 | 15,949 |
 
-## 7. Head Type: Modal vs Auxiliary
+## 6.1. Corpus Examples of 1-2 and 2-1 Orders
+
+The following examples are real CGN utterances from the converted corpus table.
+The verbal cluster is marked with square brackets.
+
+| Language | Order | CGN Utterance |
+| --- | --- | --- |
+| Dutch | `1-2` | `nee hij zei dat 'k [kon pinnen] .` |
+| Dutch | `2-1` | `oh dat boek wat jij [gelezen hebt] .` |
+| Flemish | `1-2` | `ah weet ge wat ik [ga doen] ?` |
+| Flemish | `2-1` | `weet je wat ik vandaag [gelezen heb] ?` |
+
+The corresponding cluster analyses are:
+
+| Language | Order | Cluster | Lemmas | Verb Forms |
+| --- | --- | --- | --- | --- |
+| Dutch | `1-2` | `kon pinnen` | `kunnen pinnen` | `finite infinitive` |
+| Dutch | `2-1` | `gelezen hebt` | `lezen hebben` | `participle finite` |
+| Flemish | `1-2` | `ga doen` | `gaan doen` | `finite infinitive` |
+| Flemish | `2-1` | `gelezen heb` | `lezen hebben` | `participle finite` |
+
+In the `1-2` examples, the finite verb precedes the dependent non-finite verb.
+In the `2-1` examples, the participial/non-finite verb precedes the finite
+auxiliary.
+
+## 7. Head Type: Modal, Auxiliary, and Semi-Auxiliary
 
 The project also classifies the verbal-cluster head. If `verb_rank` is
 available, the head is the verb with rank 1:
@@ -232,14 +339,15 @@ F(v_j) = \text{finite}
 
 provided that there is exactly one finite verb in the cluster.
 
-The head lemma is then classified into four possible head types:
+The head lemma is then classified into five possible head types:
 
 \[
 T(h) =
 \begin{cases}
 \text{modal} & \ell_h \in M \\
-\text{auxiliary} & \ell_h \in A \setminus M \\
-\text{other} & \ell_h \notin A \\
+\text{auxiliary} & \ell_h \in A \\
+\text{semi\_auxiliary} & \ell_h \in S \\
+\text{other} & \ell_h \notin M \cup A \cup S \\
 \text{unknown} & \text{if no head is identifiable}
 \end{cases}
 \]
@@ -254,21 +362,28 @@ M =
 \}
 \]
 
-and the auxiliary set is:
+The auxiliary set is restricted to core auxiliaries:
 
 \[
 A =
 \{
-\text{hebben}, \text{zijn}, \text{worden}, \text{gaan},
-\text{blijven}, \text{komen}, \text{laten}, \text{doen}
+\text{hebben}, \text{zijn}, \text{worden}
 \}
-\cup M
 \]
 
-For the modal/auxiliary summary, only clusters with:
+The semi-auxiliary set is:
 
 \[
-T(h) \in \{\text{modal}, \text{auxiliary}\}
+S =
+\{
+\text{gaan}, \text{blijven}, \text{komen}, \text{laten}, \text{doen}
+\}
+\]
+
+For the head-type summary, only clusters with:
+
+\[
+T(h) \in \{\text{modal}, \text{auxiliary}, \text{semi\_auxiliary}\}
 \]
 
 are counted.
@@ -291,10 +406,10 @@ The observed word-order proportions are:
 
 | Language | Order | Count | Proportion |
 | --- | --- | ---: | ---: |
-| Dutch | 1-2 | 34,751 | 0.7071 |
-| Dutch | 2-1 | 14,398 | 0.2929 |
-| Flemish | 1-2 | 22,697 | 0.6731 |
-| Flemish | 2-1 | 11,025 | 0.3269 |
+| Dutch | 1-2 | 18,521 | 0.7403 |
+| Dutch | 2-1 | 6,496 | 0.2597 |
+| Flemish | 1-2 | 12,196 | 0.6862 |
+| Flemish | 2-1 | 5,577 | 0.3138 |
 
 For head-type summaries, the conditional proportion is:
 
@@ -305,16 +420,18 @@ For head-type summaries, the conditional proportion is:
 {\sum_{o' \in \{1\text{-}2,2\text{-}1\}} n_{\lambda,h,o'}}
 \]
 
-where \(h \in \{\text{modal}, \text{auxiliary}\}\).
+where \(h \in \{\text{modal}, \text{auxiliary}, \text{semi\_auxiliary}\}\).
 
 Observed proportions by head type:
 
 | Language | Head Type | 1-2 Count | 1-2 Proportion | 2-1 Count | 2-1 Proportion |
 | --- | --- | ---: | ---: | ---: | ---: |
-| Dutch | auxiliary | 17,651 | 0.6341 | 10,186 | 0.3659 |
-| Dutch | modal | 15,107 | 0.9498 | 798 | 0.0502 |
-| Flemish | auxiliary | 10,518 | 0.5460 | 8,747 | 0.4540 |
-| Flemish | modal | 10,946 | 0.9587 | 471 | 0.0413 |
+| Dutch | auxiliary | 5,927 | 0.5171 | 5,534 | 0.4829 |
+| Dutch | modal | 9,396 | 0.9815 | 177 | 0.0185 |
+| Dutch | semi_auxiliary | 2,399 | 0.9520 | 121 | 0.0480 |
+| Flemish | auxiliary | 2,901 | 0.3662 | 5,021 | 0.6338 |
+| Flemish | modal | 6,872 | 0.9848 | 106 | 0.0152 |
+| Flemish | semi_auxiliary | 1,841 | 0.9644 | 68 | 0.0356 |
 
 ## 9. MaxEnt Model
 
@@ -351,9 +468,12 @@ The default predictors are:
 
 ```text
 cluster_length
+sentence_length_type
+cluster_position
 has_te
 has_modal
 has_auxiliary
+has_semi_auxiliary
 component
 genre
 register
@@ -503,10 +623,10 @@ Log loss is:
 
 The final model summaries were:
 
-| Language | Total Clusters | Known-Order Clusters | Accuracy | Log Loss |
+| Language | Total Extracted Clusters | Target Subordinate Clusters | Accuracy | Log Loss |
 | --- | ---: | ---: | ---: | ---: |
-| Dutch | 83,583 | 49,149 | 0.7481 | 0.4770 |
-| Flemish | 57,573 | 33,722 | 0.7249 | 0.4862 |
+| Dutch | 83,583 | 25,017 | 0.7864 | 0.4008 |
+| Flemish | 57,573 | 17,773 | 0.8118 | 0.3761 |
 
 ## 13. Step-by-Step Reproducible Workflow
 
@@ -541,7 +661,7 @@ outputs/cgn-run/dutch/
 outputs/cgn-run/flemish/
 ```
 
-Step 6: Inspect the modal/auxiliary head-type summaries:
+Step 6: Inspect the modal, auxiliary, and semi-auxiliary head-type summaries:
 
 ```text
 outputs/cgn-run/head_type_language_summary.csv
@@ -580,7 +700,7 @@ CGN annotation zip
 → utterance-level streaming verbal-cluster extraction
 → Dutch/Flemish split
 → descriptive 1-2/2-1 proportions
-→ modal/auxiliary head-type proportions
+→ modal/auxiliary/semi-auxiliary head-type proportions
 → separate MaxEnt models for Dutch and Flemish
 ```
 

@@ -39,7 +39,7 @@ class StreamingExtractionTest(unittest.TestCase):
                 writer.writeheader()
                 writer.writerows(
                     [
-                        token("u1", 1, "dat", "dat", "VG()", "Netherlands", "Dutch"),
+                        token("u1", 1, "dat", "dat", "VG(onder)", "Netherlands", "Dutch"),
                         token(
                             "u1",
                             2,
@@ -58,7 +58,7 @@ class StreamingExtractionTest(unittest.TestCase):
                             "Netherlands",
                             "Dutch",
                         ),
-                        token("u2", 1, "dat", "dat", "VG()", "Flanders", "Flemish"),
+                        token("u2", 1, "dat", "dat", "VG(onder)", "Flanders", "Flemish"),
                         token(
                             "u2",
                             2,
@@ -93,9 +93,20 @@ class StreamingExtractionTest(unittest.TestCase):
             self.assertEqual(clusters[0]["language"], "Dutch")
             self.assertEqual(clusters[0]["word_order"], "1-2")
             self.assertEqual(clusters[0]["head_type"], "modal")
+            self.assertEqual(clusters[0]["complementizer_token"], "dat")
+            self.assertEqual(clusters[0]["pre_cluster_nonverbal_count"], "0")
+            self.assertEqual(clusters[0]["sentence_length_type"], "short")
+            self.assertEqual(clusters[0]["cluster_final"], "True")
+            self.assertEqual(clusters[0]["post_cluster_word_count"], "0")
+            self.assertEqual(clusters[0]["has_semi_auxiliary"], "True")
             self.assertEqual(clusters[1]["language"], "Flemish")
             self.assertEqual(clusters[1]["word_order"], "2-1")
             self.assertEqual(clusters[1]["head_type"], "modal")
+            self.assertEqual(clusters[1]["complementizer_token"], "dat")
+            self.assertEqual(clusters[1]["pre_cluster_nonverbal_count"], "0")
+            self.assertEqual(clusters[1]["sentence_length_type"], "short")
+            self.assertEqual(clusters[1]["cluster_final"], "True")
+            self.assertEqual(clusters[1]["has_semi_auxiliary"], "True")
 
 
 def token(

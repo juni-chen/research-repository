@@ -107,18 +107,18 @@ Outputs:
 | File | Meaning |
 | --- | --- |
 | `schema_report.json` | Columns, row count, and detected languages in the input table. |
-| `all_clusters.csv` | All extracted verbal-cluster observations. |
-| `language_summary.csv` | Counts of word orders by language. |
-| `head_type_language_summary.csv` | `1-2`/`2-1` proportions by language and modal/auxiliary head type. |
+| `all_clusters.csv` | Diagnostic table of all extracted adjacent verb sequences. |
+| `language_summary.csv` | Counts of target subordinate-clause word orders by language. |
+| `head_type_language_summary.csv` | Target subordinate-clause `1-2`/`2-1` proportions by language and modal/auxiliary/semi-auxiliary head type. |
 | `experiment_summary.csv` | Compact overview of both model runs. |
-| `dutch/clusters.csv` | Dutch-only cluster observations. |
+| `dutch/clusters.csv` | Dutch-only target subordinate-clause cluster observations. |
 | `dutch/metrics.json` | Dutch-only model evaluation. |
 | `dutch/coefficients.csv` | Dutch-only MaxEnt feature weights. |
-| `dutch/head_type_word_order_summary.csv` | Dutch-only `1-2`/`2-1` proportions by modal/auxiliary head type. |
-| `flemish/clusters.csv` | Flemish-only cluster observations. |
+| `dutch/head_type_word_order_summary.csv` | Dutch-only target subordinate-clause `1-2`/`2-1` proportions by modal/auxiliary/semi-auxiliary head type. |
+| `flemish/clusters.csv` | Flemish-only target subordinate-clause cluster observations. |
 | `flemish/metrics.json` | Flemish-only model evaluation. |
 | `flemish/coefficients.csv` | Flemish-only MaxEnt feature weights. |
-| `flemish/head_type_word_order_summary.csv` | Flemish-only `1-2`/`2-1` proportions by modal/auxiliary head type. |
+| `flemish/head_type_word_order_summary.csv` | Flemish-only target subordinate-clause `1-2`/`2-1` proportions by modal/auxiliary/semi-auxiliary head type. |
 
 ## Real CGN Workflow
 
@@ -160,9 +160,12 @@ run_language_experiment(clusters, "Flemish", ...)
 Each model predicts `word_order` from factors such as:
 
 - `cluster_length`
+- `sentence_length_type`
+- `cluster_position`
 - `has_te`
 - `has_modal`
 - `has_auxiliary`
+- `has_semi_auxiliary`
 - `component`
 - `genre`
 - `speaker_region`
@@ -178,8 +181,24 @@ annotation is available.
 
 The extracted cluster table also includes `head_lemma`, `head_pos`,
 `head_position`, and `head_type`. Head type is classified as `modal`,
-`auxiliary`, `other`, or `unknown`. The modal/auxiliary order summaries use
-only `modal` and non-modal `auxiliary` heads.
+`auxiliary`, `semi_auxiliary`, `other`, or `unknown`. The `auxiliary` category
+is restricted to `hebben`, `zijn`, and `worden`; `gaan`, `blijven`, `komen`,
+`laten`, and `doen` are treated as `semi_auxiliary` heads. The head-type order
+summaries use `modal`, `auxiliary`, and `semi_auxiliary` heads.
+
+The actual experiment excludes known-order adjacent verb sequences without a
+detected preceding subordinating complementizer. Those cases remain in
+`all_clusters.csv` only for extraction diagnostics, because they are often
+main-clause finite verb + complement sequences rather than subordinate verbal
+clusters.
+
+Sentence length is encoded as a subordinate-clause distance feature. The
+project finds the nearest preceding subordinating complementizer, such as
+`dat`, `omdat`, `als`, or `of`, and counts non-punctuation non-verbal words
+between that complementizer and the verbal cluster. `short` means 4 or fewer
+such words, and `long` means more than 4. Cluster position is also binary:
+`final` means no non-punctuation material follows the cluster; `nonfinal` means
+something follows the cluster.
 
 ## Current Limits
 

@@ -10,6 +10,32 @@ import pandas as pd
 
 
 BRIDGE_TOKENS = {"te"}
+COMPLEMENTIZER_TOKENS = {
+    "als",
+    "alsof",
+    "alhoewel",
+    "behalve",
+    "dan",
+    "dat",
+    "doordat",
+    "eer",
+    "hoewel",
+    "mits",
+    "naarmate",
+    "nadat",
+    "of",
+    "omdat",
+    "tenzij",
+    "terwijl",
+    "toen",
+    "totdat",
+    "voordat",
+    "wanneer",
+    "zodat",
+    "zodra",
+    "zolang",
+    "zoals",
+}
 MODAL_LEMMAS = {
     "kunnen",
     "moeten",
@@ -22,19 +48,38 @@ AUXILIARY_LEMMAS = {
     "hebben",
     "zijn",
     "worden",
+}
+SEMI_AUXILIARY_LEMMAS = {
     "gaan",
     "blijven",
     "komen",
     "laten",
     "doen",
-} | MODAL_LEMMAS
-NON_MODAL_AUXILIARY_LEMMAS = AUXILIARY_LEMMAS - MODAL_LEMMAS
+}
+PUNCTUATION_TOKENS = {
+    ".",
+    ",",
+    ";",
+    ":",
+    "?",
+    "!",
+    "...",
+    "(",
+    ")",
+    "[",
+    "]",
+    "{",
+    "}",
+    '"',
+    "'",
+}
 
 
 @dataclass(frozen=True)
 class ClusterExtractionConfig:
     min_verbs: int = 2
     bridge_tokens: frozenset[str] = frozenset(BRIDGE_TOKENS)
+    sentence_length_short_max: int = 4
 
 
 def clean_text(value: object) -> str:
@@ -73,6 +118,148 @@ def is_verb_like(row: pd.Series) -> bool:
     if "verb" in pos or "aux" in pos:
         return True
     return verb_form in {"finite", "infinitive", "participle", "gerund"}
+
+
+def is_punctuation_like(row: pd.Series | dict[str, object]) -> bool:
+    pos = lower(row.get("pos", ""))
+    token = clean_text(row.get("token", ""))
+    if pos.startswith("let") or pos == "punct":
+        return True
+    return token in PUNCTUATION_TOKENS
+
+
+def is_lexical_token(row: pd.Series | dict[str, object]) -> bool:
+    return bool(clean_text(row.get("token", ""))) and not is_punctuation_like(row)
+
+
+def is_complementizer_like(row: pd.Series | dict[str, object]) -> bool:
+    pos = lower(row.get("pos", ""))
+    upos = lower(row.get("upos", ""))
+    token = lower(row.get("token", ""))
+    lemma = lower(row.get("lemma", ""))
+
+    if pos.startswith("vg(onder") or pos.startswith("sconj") or upos == "sconj":
+        return True
+    if pos:
+        return False
+    return token in COMPLEMENTIZER_TOKENS or lemma in COMPLEMENTIZER_TOKENS
+
+
+def count_bin(value: int, boundaries: tuple[int, ...]) -> str:
+    previous = 0
+    for boundary in boundaries:
+        if value <= boundary:
+            if previous == 0:
+                return f"1-{boundary}" if boundary > 1 else str(boundary)
+            return f"{previous + 1}-{boundary}"
+        previous = boundary
+    return f"{boundaries[-1] + 1}+"
+
+
+def zero_count_bin(value: int, boundaries: tuple[int, ...]) -> str:
+    if value == 0:
+        return "0"
+    return count_bin(value, boundaries)
+
+
+def sentence_length_type(word_count: int, short_max: int = 4) -> str:
+    return "short" if word_count <= short_max else "long"
+
+
+def subordinate_span_features(
+    rows: list[pd.Series | dict[str, object]],
+    start_token_index: int,
+    sentence_length_short_max: int,
+) -> dict[str, object]:
+    preceding_complementizers = [
+        row
+        for row in rows
+        if int(float(row.get("token_index", 0))) < start_token_index
+        and is_complementizer_like(row)
+    ]
+    if not preceding_complementizers:
+        return {
+            "complementizer_index": pd.NA,
+            "complementizer_token": "",
+            "complementizer_lemma": "",
+            "pre_cluster_nonverbal_count": pd.NA,
+            "pre_cluster_nonverbal_count_bin": "no_complementizer",
+            "sentence_length_type": "no_complementizer",
+        }
+
+    complementizer = max(
+        preceding_complementizers,
+        key=lambda row: int(float(row.get("token_index", 0))),
+    )
+    complementizer_index = int(float(complementizer.get("token_index", 0)))
+    between_rows = [
+        row
+        for row in rows
+        if complementizer_index
+        < int(float(row.get("token_index", 0)))
+        < start_token_index
+    ]
+    nonverbal_count = sum(
+        1
+        for row in between_rows
+        if is_lexical_token(row) and not is_verb_like(row)
+    )
+
+    return {
+        "complementizer_index": complementizer_index,
+        "complementizer_token": clean_text(complementizer.get("token", "")),
+        "complementizer_lemma": lower(complementizer.get("lemma", "")),
+        "pre_cluster_nonverbal_count": nonverbal_count,
+        "pre_cluster_nonverbal_count_bin": count_bin(
+            nonverbal_count,
+            (2, 4, 8),
+        ),
+        "sentence_length_type": sentence_length_type(
+            nonverbal_count,
+            sentence_length_short_max,
+        ),
+    }
+
+
+def utterance_position_features(
+    utterance_rows: Iterable[pd.Series | dict[str, object]],
+    start_token_index: int,
+    end_token_index: int,
+    sentence_length_short_max: int = 4,
+) -> dict[str, object]:
+    rows = list(utterance_rows)
+    utterance_token_count = len(rows)
+    utterance_word_count = sum(1 for row in rows if is_lexical_token(row))
+    post_cluster_rows = [
+        row for row in rows if int(float(row.get("token_index", 0))) > end_token_index
+    ]
+    post_cluster_token_count = len(post_cluster_rows)
+    post_cluster_word_count = sum(
+        1 for row in post_cluster_rows if is_lexical_token(row)
+    )
+    cluster_final = post_cluster_word_count == 0
+
+    return {
+        "utterance_token_count": utterance_token_count,
+        "utterance_word_count": utterance_word_count,
+        **subordinate_span_features(
+            rows,
+            start_token_index,
+            sentence_length_short_max,
+        ),
+        "utterance_word_count_bin": count_bin(
+            utterance_word_count,
+            (5, 10, 20, 40),
+        ),
+        "post_cluster_token_count": post_cluster_token_count,
+        "post_cluster_word_count": post_cluster_word_count,
+        "post_cluster_word_count_bin": zero_count_bin(
+            post_cluster_word_count,
+            (2, 5, 10),
+        ),
+        "cluster_final": cluster_final,
+        "cluster_position": "final" if cluster_final else "nonfinal",
+    }
 
 
 def most_common(values: Iterable[object]) -> object:
@@ -122,8 +309,10 @@ def classify_head_lemma(lemma: object) -> str:
         return "unknown"
     if normalized in MODAL_LEMMAS:
         return "modal"
-    if normalized in NON_MODAL_AUXILIARY_LEMMAS:
+    if normalized in AUXILIARY_LEMMAS:
         return "auxiliary"
+    if normalized in SEMI_AUXILIARY_LEMMAS:
+        return "semi_auxiliary"
     return "other"
 
 
@@ -192,7 +381,7 @@ def extract_clusters(
         def flush() -> None:
             nonlocal current_indices, pending_bridge_indices
             if len(current_indices) >= config.min_verbs:
-                add_cluster_record(records, utterance_id, group, current_indices)
+                add_cluster_record(records, utterance_id, group, current_indices, config)
             current_indices = []
             pending_bridge_indices = []
 
@@ -215,6 +404,7 @@ def add_cluster_record(
     utterance_id: object,
     utterance: pd.DataFrame,
     verb_indices: list[int],
+    config: ClusterExtractionConfig,
 ) -> None:
     verb_rows = utterance.loc[verb_indices].copy()
     start = int(verb_rows["token_index"].min())
@@ -235,6 +425,12 @@ def add_cluster_record(
     if word_order == "unknown":
         word_order = order_from_forms(verb_rows)
     head_info = head_info_from_rows(verb_rows, forms)
+    position_info = utterance_position_features(
+        (row for _, row in utterance.iterrows()),
+        start,
+        end,
+        config.sentence_length_short_max,
+    )
 
     record = {
         "cluster_id": f"{utterance_id}:{start}-{end}",
@@ -249,6 +445,7 @@ def add_cluster_record(
         "genre": most_common(verb_rows.get("genre", [])),
         "register": most_common(verb_rows.get("register", [])),
         "cluster_length": len(verb_rows),
+        **position_info,
         "surface_tokens": " ".join(span_tokens),
         "surface_lemmas": " ".join(span_lemmas),
         "verb_tokens": " ".join(verb_tokens),
@@ -260,5 +457,8 @@ def add_cluster_record(
         "has_te": any(lower(value) == "te" for value in span["token"].tolist()),
         "has_modal": any(lemma in MODAL_LEMMAS for lemma in verb_lemmas),
         "has_auxiliary": any(lemma in AUXILIARY_LEMMAS for lemma in verb_lemmas),
+        "has_semi_auxiliary": any(
+            lemma in SEMI_AUXILIARY_LEMMAS for lemma in verb_lemmas
+        ),
     }
     records.append(record)

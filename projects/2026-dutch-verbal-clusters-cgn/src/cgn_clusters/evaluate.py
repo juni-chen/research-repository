@@ -10,9 +10,24 @@ import pandas as pd
 
 from .model import accuracy, log_loss
 
+SUMMARY_HEAD_TYPES = ["modal", "auxiliary", "semi_auxiliary"]
+
+
+def has_detected_complementizer(clusters: pd.DataFrame) -> pd.Series:
+    if "complementizer_token" not in clusters.columns:
+        return pd.Series(True, index=clusters.index)
+    return clusters["complementizer_token"].fillna("").astype(str).str.strip() != ""
+
+
+def target_experiment_clusters(clusters: pd.DataFrame) -> pd.DataFrame:
+    return clusters[
+        (clusters["word_order"] != "unknown")
+        & has_detected_complementizer(clusters)
+    ].copy()
+
 
 def word_order_summary(clusters: pd.DataFrame) -> pd.DataFrame:
-    known = clusters[clusters["word_order"] != "unknown"].copy()
+    known = target_experiment_clusters(clusters)
     if known.empty:
         return pd.DataFrame(columns=["word_order", "count", "proportion"])
     counts = (
@@ -26,7 +41,7 @@ def word_order_summary(clusters: pd.DataFrame) -> pd.DataFrame:
 
 
 def language_summary(clusters: pd.DataFrame) -> pd.DataFrame:
-    known = clusters[clusters["word_order"] != "unknown"].copy()
+    known = target_experiment_clusters(clusters)
     if known.empty:
         return pd.DataFrame(columns=["language", "word_order", "count", "proportion"])
     counts = (
@@ -46,8 +61,9 @@ def head_type_word_order_summary(clusters: pd.DataFrame) -> pd.DataFrame:
         return pd.DataFrame(columns=columns)
 
     known = clusters[
-        (clusters["word_order"] != "unknown")
-        & (clusters["head_type"].isin(["modal", "auxiliary"]))
+        has_detected_complementizer(clusters)
+        & (clusters["word_order"] != "unknown")
+        & (clusters["head_type"].isin(SUMMARY_HEAD_TYPES))
     ].copy()
     if known.empty:
         return pd.DataFrame(columns=columns)
@@ -69,8 +85,9 @@ def language_head_type_word_order_summary(clusters: pd.DataFrame) -> pd.DataFram
         return pd.DataFrame(columns=columns)
 
     known = clusters[
-        (clusters["word_order"] != "unknown")
-        & (clusters["head_type"].isin(["modal", "auxiliary"]))
+        has_detected_complementizer(clusters)
+        & (clusters["word_order"] != "unknown")
+        & (clusters["head_type"].isin(SUMMARY_HEAD_TYPES))
     ].copy()
     if known.empty:
         return pd.DataFrame(columns=columns)
@@ -87,7 +104,7 @@ def language_head_type_word_order_summary(clusters: pd.DataFrame) -> pd.DataFram
 
 
 def variety_summary(clusters: pd.DataFrame) -> pd.DataFrame:
-    known = clusters[clusters["word_order"] != "unknown"].copy()
+    known = target_experiment_clusters(clusters)
     if known.empty:
         return pd.DataFrame(columns=["variety", "word_order", "count", "proportion"])
     counts = (

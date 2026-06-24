@@ -44,6 +44,16 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--min-verbs", type=int, default=2)
     parser.add_argument(
+        "--short-sentence-max-elements",
+        type=int,
+        default=4,
+        help=(
+            "Maximum non-verbal token count between a preceding subordinating "
+            "complementizer and the verb cluster for sentence_length_type=short. "
+            "Defaults to 4."
+        ),
+    )
+    parser.add_argument(
         "--use-pandas-extraction",
         action="store_true",
         help="Use the older in-memory extractor. Streaming is the default.",
@@ -82,7 +92,10 @@ def main() -> None:
         tokens, schema_report = read_token_table(token_path)
         clusters = extract_clusters(
             tokens,
-            ClusterExtractionConfig(min_verbs=args.min_verbs),
+            ClusterExtractionConfig(
+                min_verbs=args.min_verbs,
+                sentence_length_short_max=args.short_sentence_max_elements,
+            ),
         )
         write_csv(clusters, cluster_path)
         write_json(schema_report.__dict__, out_dir / "schema_report.json")
@@ -90,7 +103,10 @@ def main() -> None:
         extraction_report = extract_clusters_to_csv(
             token_path,
             cluster_path,
-            ClusterExtractionConfig(min_verbs=args.min_verbs),
+            ClusterExtractionConfig(
+                min_verbs=args.min_verbs,
+                sentence_length_short_max=args.short_sentence_max_elements,
+            ),
         )
         write_json(extraction_report, out_dir / "schema_report.json")
         clusters = pd.read_csv(cluster_path)
