@@ -438,7 +438,7 @@ outputs/cgn-run/dutch/head_type_word_order_summary.csv
 outputs/cgn-run/flemish/head_type_word_order_summary.csv
 ```
 
-CGNの生データアーカイブと変換後の大規模トークンテーブルは、CGNのライセンス条件に関わるため、GitHubリポジトリには含めません。
+CGNの生データアーカイブと変換後のトークンテーブルは、CGNのライセンス条件に関わるため、GitHubリポジトリには含めません。
 
 [^1]:フラマン語はオランダ南西部、ベルギー北部で話されている言語である。オランダ語の方言として扱われることも多い。
 [^2]:実験対象から除外されたクラスターもall_clusters.csvに診断用出力としてのみ残している。
